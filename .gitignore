@@ -1,0 +1,43 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+.output
+.vinxi
+.tanstack/**
+.nitro
+
+# Wrangler / Cloudflare
+.wrangler/
+.dev.vars
+
+scratch/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Segredos locais (o Lovable Cloud injeta as variáveis em produção)
+.env.local
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials

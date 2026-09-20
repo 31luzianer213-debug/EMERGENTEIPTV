@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { createMysticPayPixPayment, checkMysticPayPayment } from "./mysticpay.server";
-import { getMysticPayCredentials } from "./system-settings.server";
+import { createMercadoPagoPixPayment } from "./mercadopago.server";
+import { getMercadoPagoToken } from "./system-settings.server";
 import { publicAppUrl } from "./whatsapp-connection.server";
 
 export type SubscriptionState = "active" | "trialing" | "grace" | "blocked";
@@ -91,7 +91,7 @@ export async function getSubscriptionSummaryServer(userId: string): Promise<Subs
     currentPeriodEnd: subscription?.current_period_end ?? null,
     daysLeft,
     clientsCount: count ?? 0,
-    saasPaymentsEnabled: Boolean(await getMysticPayCredentials()),
+    saasPaymentsEnabled: Boolean(await getMercadoPagoToken()),
   };
 }
 
@@ -102,9 +102,9 @@ export async function createSubscriptionPixServer(params: {
   email: string | null;
   name: string | null;
 }) {
-  const creds = await getMysticPayCredentials();
-  if (!creds) {
-    return { ok: false as const, error: "Pagamentos da assinatura ainda não estão habilitados. O administrador precisa configurar as credenciais da MisticPay em Administração." };
+  const token = await getMercadoPagoToken();
+  if (!token) {
+    return { ok: false as const, error: "Pagamentos da assinatura ainda não estão habilitados. O administrador precisa configurar o Access Token do Mercado Pago em Administração." };
   }
 
   const { data: planRow } = await supabaseAdmin.from("saas_plans").select("*").eq("id", params.planId).eq("active", true).maybeSingle();
@@ -130,19 +130,19 @@ export async function createSubscriptionPixServer(params: {
 
   const { data: payment, error } = await supabaseAdmin
     .from("saas_payments")
-    .insert({ user_id: params.userId, plan_id: plan.id, amount, months, status: "pending", provider: "mysticpay" })
+    .insert({ user_id: params.userId, plan_id: plan.id, amount, months, status: "pending", provider: "mercadopago" })
     .select("*")
     .single();
   if (error || !payment) return { ok: false as const, error: error?.message || "Não foi possível registrar o pagamento." };
 
-  const pix = await createMysticPayPixPayment({
-    clientId: creds.clientId,
-    clientSecret: creds.clientSecret,
+  const pix = await createMercadoPagoPixPayment({
+    token,
     amount,
     description: `Sigma Control - Plano ${plan.name} (${months} mes${months > 1 ? "es" : ""})`,
-    transactionId: `saas_${payment.id}`,
-    payerName: params.name || params.email || "Revendedor",
-    webhookUrl: `${publicAppUrl()}/api/public/hooks/saas-mysticpay`,
+    orderId: `saas_${payment.id}`,
+    customerName: params.name || params.email || "Revendedor",
+    customerPhone: "",
+    webhookUrl: `${publicAppUrl()}/api/public/hooks/saas-mercadopago`,
   });
 
   if (!pix.ok) {
@@ -152,7 +152,7 @@ export async function createSubscriptionPixServer(params: {
 
   const { data: updated } = await supabaseAdmin
     .from("saas_payments")
-    .update({ provider_payment_id: pix.transactionId, pix_code: pix.qrCode, pix_qr_base64: pix.qrCodeBase64 })
+    .update({ provider_payment_id: pix.paymentId, pix_code: pix.qrCode, pix_qr_base64: pix.qrCodeBase64, ticket_url: pix.ticketUrl })
     .eq("id", payment.id)
     .select("*")
     .single();
@@ -186,25 +186,25 @@ export async function activateSubscriptionFromPayment(paymentId: string) {
   return { ok: true as const, periodEnd };
 }
 
-/** Consulta a MisticPay e ativa caso o Pix já tenha sido pago (fallback do webhook). */
+/** Consulta o Mercado Pago e ativa caso o Pix já tenha sido pago (fallback do webhook). */
 export async function reconcileSaasPayment(paymentId: string, userId?: string) {
+  const token = await getMercadoPagoToken();
   const { data: payment } = await supabaseAdmin.from("saas_payments").select("*").eq("id", paymentId).maybeSingle();
   if (!payment || (userId && payment.user_id !== userId)) return { ok: false as const, error: "Pagamento não encontrado." };
   if (payment.status === "approved") return { ok: true as const, status: "approved" as const };
-  const creds = await getMysticPayCredentials();
-  if (!creds || !payment.provider_payment_id) return { ok: true as const, status: payment.status };
+  if (!token || !payment.provider_payment_id) return { ok: true as const, status: payment.status };
 
   try {
-    const check = await checkMysticPayPayment({
-      clientId: creds.clientId,
-      clientSecret: creds.clientSecret,
-      transactionId: String(payment.provider_payment_id),
+    const res = await fetch(`https://api.mercadopago.com/v1/payments/${payment.provider_payment_id}`, {
+      headers: { Authorization: `Bearer ${token}` },
     });
-    if (check.ok && check.state === "COMPLETO") {
+    if (!res.ok) return { ok: true as const, status: payment.status };
+    const data: any = await res.json();
+    if (data?.status === "approved") {
       const result = await activateSubscriptionFromPayment(payment.id);
       return result.ok ? { ok: true as const, status: "approved" as const } : { ok: false as const, error: result.error };
     }
-    if (check.ok && check.state === "FALHA") {
+    if (["cancelled", "rejected", "expired"].includes(String(data?.status))) {
       await supabaseAdmin.from("saas_payments").update({ status: "cancelled" }).eq("id", payment.id);
       return { ok: true as const, status: "cancelled" as const };
     }

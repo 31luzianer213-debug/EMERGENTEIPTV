@@ -1,4 +1,4 @@
--- Plano único de R$20 + credenciais MisticPay (assinatura do sistema)
+-- Plano único de R$20 + Access Token do Mercado Pago (assinatura do sistema)
 
 -- 1) Deixa apenas UM plano ativo: "Plano Mensal" por R$ 20,00 (clientes ilimitados).
 --    Reaproveita o id 'ilimitado' (já usado como padrão do trial e nas FKs) e
@@ -27,12 +27,11 @@ VALUES ('ilimitado', 'Plano Mensal', 'Acesso completo ao Sigma Control.', 20.00,
 ON CONFLICT (id) DO NOTHING;
 
 -- 2) Configurações globais do sistema (somente o dono/admin acessa via server functions).
---    Guarda as credenciais da MisticPay para gerar/receber os Pix das assinaturas.
+--    Guarda o Access Token do Mercado Pago para gerar/receber os Pix das assinaturas.
 CREATE TABLE IF NOT EXISTS public.system_settings (
   id TEXT PRIMARY KEY DEFAULT 'global',
-  saas_provider TEXT NOT NULL DEFAULT 'mysticpay',
-  mysticpay_client_id TEXT,
-  mysticpay_client_secret TEXT,
+  saas_provider TEXT NOT NULL DEFAULT 'mercadopago',
+  mercadopago_token TEXT,
   admin_email TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -40,13 +39,13 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
 );
 
 -- RLS ligado sem políticas para anon/authenticated: só o service_role (backend) lê/grava,
--- de modo que o Client Secret nunca é exposto ao navegador.
+-- de modo que o token nunca é exposto ao navegador.
 ALTER TABLE public.system_settings ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.system_settings FROM anon, authenticated;
 GRANT ALL ON public.system_settings TO service_role;
 
 INSERT INTO public.system_settings (id, saas_provider, admin_email)
-VALUES ('global', 'mysticpay', 'frfrfrfrfr@gmail.com')
+VALUES ('global', 'mercadopago', 'frfrfrfrfr@gmail.com')
 ON CONFLICT (id) DO UPDATE
   SET admin_email = COALESCE(public.system_settings.admin_email, EXCLUDED.admin_email),
       updated_at = now();

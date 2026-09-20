@@ -17,15 +17,15 @@ Painel SaaS de revenda IPTV (projeto Lovable: TanStack Start + Supabase). Pedido
 ## Implementado (2026-06)
 - **Menus removidos da sidebar**: "Clientes operação", "Sincronização Sigma", "Diagnóstico WhatsApp" (as páginas/rotas continuam existindo e acessíveis por links internos; só saíram do menu). `src/components/layout/navigation.ts`.
 - **Plano único R$20**: migração `20260921000000_single_plan_and_mysticpay.sql` transforma o plano `ilimitado` em "Plano Mensal" R$20 (clientes ilimitados) e desativa Básico/Profissional. Landing e tela de Assinatura passam a mostrar só esse plano. Fallback da landing e textos atualizados.
-- **MisticPay (assinaturas)**: substitui Mercado Pago no fluxo SaaS.
-  - `src/lib/mysticpay.server.ts`: create (`/api/transactions/create`) e check (`/api/transactions/check`). Auth por `ci/cs` ou `Authorization: Basic` (pk_/sk_), detectado pelo prefixo. Gera CPF válido para o pagador.
-  - `src/lib/system-settings.server.ts`: lê credenciais e admin_email da tabela `system_settings`.
-  - `src/lib/admin.functions.ts`: getAdminStatus, getAdminSettings, saveAdminSettings, testMysticPayConnection (todas restritas ao admin).
-  - `src/lib/subscription.server.ts`: gera/consulta Pix pela MisticPay usando as credenciais do banco.
-  - Webhook: `src/routes/api/public/hooks/saas-mysticpay.ts` (reconfere na API antes de ativar).
-- **Painel Admin**: nova rota `/_authenticated/admin.tsx` (menu "Administração", visível só para o admin). Campos Client ID / Client Secret, teste de conexão, salvar, e URL do webhook.
-  - Tabela `system_settings` (singleton, RLS só service_role) guarda `mysticpay_client_id`, `mysticpay_client_secret`, `admin_email`.
-  - Admin default: `frfrfrfrfr@gmail.com` (semeado na migração + fallback em `system-settings.server.ts`; sobrescrevível por env `ADMIN_EMAIL`).
+- **Mercado Pago (assinaturas)**: token colado no painel Admin (não usa mais env obrigatório).
+  - `src/lib/mercadopago.server.ts`: cria o Pix (QR + copia e cola) via API do Mercado Pago (já existia).
+  - `src/lib/system-settings.server.ts`: lê `mercadopago_token` e `admin_email` da tabela `system_settings` (fallback para env `SAAS_MERCADOPAGO_TOKEN`).
+  - `src/lib/admin.functions.ts`: getAdminStatus, getAdminSettings, saveAdminSettings, testMercadoPagoToken (restritas ao admin).
+  - `src/lib/subscription.server.ts`: gera/consulta o Pix usando o token do banco.
+  - Webhook: `src/routes/api/public/hooks/saas-mercadopago.ts` (reconfere na API do Mercado Pago com o token do banco antes de ativar).
+- **Painel Admin**: nova rota `/_authenticated/admin.tsx` (menu "Administração", visível só para o admin). Campo Access Token do Mercado Pago, teste, salvar, e URL do webhook.
+  - Tabela `system_settings` (singleton, RLS só service_role) guarda `mercadopago_token` e `admin_email`.
+  - Admin default: `frfrfrfrfr@gmail.com` (semeado na migração + fallback; sobrescrevível por env `ADMIN_EMAIL`).
 
 ## Validação
 - `npx tsc --noEmit` → 0 erros.

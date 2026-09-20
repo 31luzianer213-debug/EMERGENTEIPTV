@@ -13,7 +13,7 @@ export const getAdminStatus = createServerFn({ method: "GET" })
     return { isAdmin: await isAdminEmail(emailFromClaims(context.claims)) };
   });
 
-/** Carrega as configurações globais (sem devolver o Secret em texto puro). */
+/** Carrega as configurações globais (sem devolver o token em texto puro). */
 export const getAdminSettings = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
@@ -25,44 +25,56 @@ export const getAdminSettings = createServerFn({ method: "GET" })
     return {
       ok: true as const,
       settings: {
-        saas_provider: settings?.saas_provider ?? "mysticpay",
-        mysticpay_client_id: settings?.mysticpay_client_id ?? "",
-        has_secret: Boolean(settings?.mysticpay_client_secret),
+        saas_provider: settings?.saas_provider ?? "mercadopago",
+        has_token: Boolean(settings?.mercadopago_token),
         admin_email: settings?.admin_email ?? "",
       },
     };
   });
 
-/** Salva as credenciais da MisticPay (Client ID / Client Secret). */
+/** Salva o Access Token do Mercado Pago. */
 export const saveAdminSettings = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { mysticpay_client_id?: string; mysticpay_client_secret?: string }) => input)
+  .inputValidator((input: { mercadopago_token?: string }) => input)
   .handler(async ({ data, context }) => {
     const { isAdminEmail } = await import("./system-settings.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     if (!(await isAdminEmail(emailFromClaims(context.claims)))) {
       return { ok: false as const, error: "Acesso restrito ao administrador do sistema." };
     }
-    const payload: Record<string, unknown> = { id: "global", saas_provider: "mysticpay" };
-    if (typeof data.mysticpay_client_id === "string") payload.mysticpay_client_id = data.mysticpay_client_id.trim();
-    // Só sobrescreve o Secret quando um novo valor é enviado (mantém o atual se vier vazio).
-    if (typeof data.mysticpay_client_secret === "string" && data.mysticpay_client_secret.trim()) {
-      payload.mysticpay_client_secret = data.mysticpay_client_secret.trim();
+    const payload: Record<string, unknown> = { id: "global", saas_provider: "mercadopago" };
+    // Só sobrescreve o token quando um novo valor é enviado (mantém o atual se vier vazio).
+    if (typeof data.mercadopago_token === "string" && data.mercadopago_token.trim()) {
+      payload.mercadopago_token = data.mercadopago_token.trim();
     }
     const { error } = await (supabaseAdmin as any).from("system_settings").upsert(payload, { onConflict: "id" });
     if (error) return { ok: false as const, error: error.message };
     return { ok: true as const };
   });
 
-/** Testa as credenciais da MisticPay informadas na tela de Administração. */
-export const testMysticPayConnection = createServerFn({ method: "POST" })
+/** Testa o Access Token do Mercado Pago consultando a conta vinculada. */
+export const testMercadoPagoToken = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: { clientId: string; clientSecret: string }) => input)
+  .inputValidator((input: { token: string }) => input)
   .handler(async ({ data, context }) => {
     const { isAdminEmail } = await import("./system-settings.server");
     if (!(await isAdminEmail(emailFromClaims(context.claims)))) {
       return { ok: false as const, error: "Acesso restrito ao administrador do sistema." };
     }
-    const { checkMysticPayCredentials } = await import("./mysticpay.server");
-    return await checkMysticPayCredentials(data.clientId, data.clientSecret);
+    const token = data.token?.trim();
+    if (!token) return { ok: false as const, error: "Informe o Access Token do Mercado Pago." };
+    try {
+      const res = await fetch("https://api.mercadopago.com/users/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401 || res.status === 403) {
+        return { ok: false as const, error: "Token recusado pelo Mercado Pago. Verifique o Access Token." };
+      }
+      if (!res.ok) return { ok: false as const, error: "Não foi possível validar o token agora. Tente de novo." };
+      const info: any = await res.json().catch(() => ({}));
+      const nickname = info?.nickname || info?.email || "conta Mercado Pago";
+      return { ok: true as const, message: `Token válido — conectado à ${nickname}.` };
+    } catch (err) {
+      return { ok: false as const, error: err instanceof Error ? err.message : "Falha na conexão com o Mercado Pago." };
+    }
   });

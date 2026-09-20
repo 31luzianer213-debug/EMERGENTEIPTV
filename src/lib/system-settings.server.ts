@@ -4,26 +4,26 @@ const DEFAULT_ADMIN_EMAIL = (process.env["ADMIN_EMAIL"]?.trim() || "frfrfrfrfr@g
 
 export type SystemSettings = {
   saas_provider: string;
-  mysticpay_client_id: string | null;
-  mysticpay_client_secret: string | null;
+  mercadopago_token: string | null;
   admin_email: string | null;
 };
 
 export async function getSystemSettings(): Promise<SystemSettings | null> {
   const { data } = await (supabaseAdmin as any)
     .from("system_settings")
-    .select("saas_provider, mysticpay_client_id, mysticpay_client_secret, admin_email")
+    .select("saas_provider, mercadopago_token, admin_email")
     .eq("id", "global")
     .maybeSingle();
   return (data as SystemSettings) ?? null;
 }
 
-export async function getMysticPayCredentials(): Promise<{ clientId: string; clientSecret: string } | null> {
+/** Token do Mercado Pago: primeiro o salvo no painel Admin, senão o env (compatibilidade). */
+export async function getMercadoPagoToken(): Promise<string | null> {
   const settings = await getSystemSettings();
-  const clientId = settings?.mysticpay_client_id?.trim();
-  const clientSecret = settings?.mysticpay_client_secret?.trim();
-  if (clientId && clientSecret) return { clientId, clientSecret };
-  return null;
+  const token = settings?.mercadopago_token?.trim();
+  if (token) return token;
+  const envToken = process.env["SAAS_MERCADOPAGO_TOKEN"]?.trim();
+  return envToken || null;
 }
 
 export async function getAdminEmail(): Promise<string> {

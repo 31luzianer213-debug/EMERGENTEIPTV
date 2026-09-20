@@ -7,5 +7,4 @@
 - Para trocar o admin: atualizar `system_settings.admin_email` ou definir env `ADMIN_EMAIL`.
 
 ## MisticPay (assinaturas)
-- Client ID / Client Secret: o usuário vai colar depois em Administração → Credenciais da MisticPay.
-- Docs: https://docs.misticpay.com
+- Não é mais usado. O sistema usa Mercado Pago; o Access Token é colado no painel Administração.

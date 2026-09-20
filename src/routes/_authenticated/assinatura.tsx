@@ -114,7 +114,7 @@ function AssinaturaPage() {
             </p>
             {!sub?.saasPaymentsEnabled && (
               <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300" data-testid="saas-payments-disabled">
-                Os pagamentos da assinatura ainda não foram habilitados pelo administrador do sistema (credenciais da MisticPay em Administração).
+                Os pagamentos da assinatura ainda não foram habilitados pelo administrador do sistema (Access Token do Mercado Pago em Administração).
               </p>
             )}
           </div>
@@ -197,7 +197,7 @@ function AssinaturaPage() {
         </>
       )}
 
-      <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-3.5" /> Pagamento processado via Pix (MisticPay). Ao assinar você concorda com os <Link to="/termos" className="underline">Termos de Uso</Link>.</p>
+      <p className="flex items-center gap-2 text-xs text-muted-foreground"><ShieldCheck className="size-3.5" /> Pagamento processado pelo Mercado Pago. Ao assinar você concorda com os <Link to="/termos" className="underline">Termos de Uso</Link>.</p>
     </div>
   );
 }

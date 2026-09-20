@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getAdminSettings, saveAdminSettings, testMysticPayConnection } from "@/lib/admin.functions";
+import { getAdminSettings, saveAdminSettings, testMercadoPagoToken } from "@/lib/admin.functions";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   head: () => ({ meta: [{ title: "Administração — Sigma Control" }] }),
@@ -34,12 +34,11 @@ function AdminPage() {
   const queryClient = useQueryClient();
   const getSettingsFn = useServerFn(getAdminSettings);
   const saveSettingsFn = useServerFn(saveAdminSettings);
-  const testFn = useServerFn(testMysticPayConnection);
+  const testFn = useServerFn(testMercadoPagoToken);
 
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
-  const [showSecret, setShowSecret] = useState(false);
-  const [hasSecret, setHasSecret] = useState(false);
+  const [token, setToken] = useState("");
+  const [showToken, setShowToken] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
   const [testing, setTesting] = useState(false);
   const [status, setStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -51,21 +50,19 @@ function AdminPage() {
   });
 
   useEffect(() => {
-    if (data?.ok) {
-      setClientId(data.settings.mysticpay_client_id ?? "");
-      setHasSecret(Boolean(data.settings.has_secret));
-    }
+    if (data?.ok) setHasToken(Boolean(data.settings.has_token));
   }, [data]);
 
   const save = useMutation({
     mutationFn: async () => {
-      const res = await saveSettingsFn({ data: { mysticpay_client_id: clientId, mysticpay_client_secret: clientSecret } });
+      const res = await saveSettingsFn({ data: { mercadopago_token: token } });
       if (!res.ok) throw new Error(res.error || "Falha ao salvar.");
       return res;
     },
     onSuccess: () => {
-      toast.success("Credenciais da MisticPay salvas! Os Pix das assinaturas já usam esse token.");
-      setClientSecret("");
+      toast.success("Token do Mercado Pago salvo! Os Pix das assinaturas já usam esse token.");
+      setToken("");
+      setHasToken(true);
       queryClient.invalidateQueries({ queryKey: ["admin-settings"] });
       queryClient.invalidateQueries({ queryKey: ["my-subscription"] });
     },
@@ -73,31 +70,31 @@ function AdminPage() {
   });
 
   async function handleTest() {
-    if (!clientId.trim() || !clientSecret.trim()) {
-      toast.error("Preencha o Client ID e o Client Secret para testar.");
+    if (!token.trim()) {
+      toast.error("Cole o Access Token do Mercado Pago para testar.");
       return;
     }
     setTesting(true);
     setStatus(null);
     try {
-      const res = await testFn({ data: { clientId, clientSecret } });
+      const res = await testFn({ data: { token } });
       if (res.ok) {
-        setStatus({ ok: true, message: res.message || "Credenciais válidas." });
-        toast.success("Conexão com a MisticPay validada!");
+        setStatus({ ok: true, message: res.message || "Token válido." });
+        toast.success("Token do Mercado Pago validado!");
       } else {
-        setStatus({ ok: false, message: res.error || "Credenciais recusadas." });
-        toast.error(res.error || "Credenciais recusadas.");
+        setStatus({ ok: false, message: res.error || "Token recusado." });
+        toast.error(res.error || "Token recusado.");
       }
     } catch {
-      setStatus({ ok: false, message: "Erro ao validar credenciais." });
-      toast.error("Erro ao validar credenciais.");
+      setStatus({ ok: false, message: "Erro ao validar o token." });
+      toast.error("Erro ao validar o token.");
     } finally {
       setTesting(false);
     }
   }
 
   const webhookUrl =
-    (typeof window !== "undefined" ? window.location.origin : "") + "/api/public/hooks/saas-mysticpay";
+    (typeof window !== "undefined" ? window.location.origin : "") + "/api/public/hooks/saas-mercadopago";
 
   if (isLoading) {
     return (
@@ -131,7 +128,7 @@ function AdminPage() {
           <Crown className="size-6 text-primary" /> Administração do Sistema
         </h1>
         <p className="text-sm text-muted-foreground">
-          Configure o gateway que recebe os Pix das <strong>assinaturas</strong> dos revendedores (MisticPay).
+          Configure o Mercado Pago que recebe os Pix das <strong>assinaturas</strong> dos revendedores.
         </p>
       </div>
 
@@ -140,14 +137,14 @@ function AdminPage() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Wallet className="size-5 text-primary" /> Credenciais da MisticPay
+                <Wallet className="size-5 text-primary" /> Access Token do Mercado Pago
               </CardTitle>
               <CardDescription className="mt-1">
                 É aqui que você cola seu token para gerar os códigos Pix e receber os pagamentos automaticamente.
               </CardDescription>
             </div>
-            <Badge variant={hasSecret ? "success" : "secondary"} className="text-xs" data-testid="admin-mysticpay-status">
-              {hasSecret ? "Configurado" : "Pendente"}
+            <Badge variant={hasToken ? "success" : "secondary"} className="text-xs" data-testid="admin-token-status">
+              {hasToken ? "Configurado" : "Pendente"}
             </Badge>
           </div>
         </CardHeader>
@@ -155,10 +152,10 @@ function AdminPage() {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <Label className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                <Lock className="size-3.5 text-primary" /> Client ID (ci_ ou pk_) *
+                <Lock className="size-3.5 text-primary" /> Access Token (APP_USR-...) *
               </Label>
               <a
-                href="https://docs.misticpay.com/"
+                href="https://www.mercadopago.com.br/developers/panel/app"
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-1 text-xs font-medium text-primary hover:underline"
@@ -166,45 +163,31 @@ function AdminPage() {
                 Onde pegar? <ExternalLink className="size-3" />
               </a>
             </div>
-            <Input
-              type="text"
-              placeholder="ci_xxxxx ou pk_xxxxx"
-              value={clientId}
-              onChange={(e) => {
-                setClientId(e.target.value);
-                setStatus(null);
-              }}
-              className="rounded-xl font-mono text-sm"
-              data-testid="admin-client-id-input"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
-              <Lock className="size-3.5 text-primary" /> Client Secret (cs_ ou sk_) *
-            </Label>
             <div className="relative flex items-center">
               <Input
-                type={showSecret ? "text" : "password"}
-                placeholder={hasSecret ? "•••••••••• (mantém o atual se ficar vazio)" : "cs_xxxxx ou sk_xxxxx"}
-                value={clientSecret}
+                type={showToken ? "text" : "password"}
+                placeholder={hasToken ? "•••••••••• (deixe vazio para manter o atual)" : "APP_USR-0000000000000000-..."}
+                value={token}
                 onChange={(e) => {
-                  setClientSecret(e.target.value);
+                  setToken(e.target.value);
                   setStatus(null);
                 }}
                 className="rounded-xl pr-10 font-mono text-sm"
-                data-testid="admin-client-secret-input"
+                data-testid="admin-token-input"
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowSecret(!showSecret)}
+                onClick={() => setShowToken(!showToken)}
                 className="absolute right-1 size-7 text-muted-foreground hover:text-foreground"
               >
-                {showSecret ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                {showToken ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
               </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Use o <strong>Access Token de produção</strong> das suas credenciais do Mercado Pago (não a Public Key).
+            </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -213,12 +196,12 @@ function AdminPage() {
               variant="outline"
               size="sm"
               onClick={handleTest}
-              disabled={testing || !clientId || !clientSecret}
+              disabled={testing || !token.trim()}
               className="gap-2 text-xs font-medium"
               data-testid="admin-test-button"
             >
               {testing ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5 text-primary" />}
-              Testar conexão
+              Testar token
             </Button>
             {status ? (
               <div
@@ -239,12 +222,12 @@ function AdminPage() {
             <Button
               type="button"
               onClick={() => save.mutate()}
-              disabled={save.isPending || !clientId.trim()}
+              disabled={save.isPending || (!token.trim() && !hasToken)}
               className="gap-1.5 px-6 font-semibold"
               data-testid="admin-save-button"
             >
               {save.isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-              Salvar credenciais
+              Salvar token
             </Button>
           </div>
         </CardContent>
@@ -256,8 +239,9 @@ function AdminPage() {
             <Sparkles className="size-5 text-primary" /> Webhook de confirmação automática
           </CardTitle>
           <CardDescription>
-            Opcional, mas recomendado. Na MisticPay, em <strong>Webhooks / Postback</strong>, cadastre a URL abaixo para
-            confirmar as assinaturas na hora. (O sistema também confere o Pix a cada 5s na tela de Assinatura.)
+            Recomendado. No painel do Mercado Pago, em <strong>Suas integrações → Webhooks</strong>, cadastre a URL abaixo
+            (evento <strong>Pagamentos</strong>) para confirmar as assinaturas na hora. (O sistema também confere o Pix a
+            cada 5s na tela de Assinatura.)
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-2">
